@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: cloud-puzzle
+    runtime: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: CLOUD_PUZZLE_DB
+        value: /app/data/cloud-puzzle.sqlite
+    disk:
+      name: cloud-puzzle-data
+      mountPath: /app/data
+      sizeGB: 1

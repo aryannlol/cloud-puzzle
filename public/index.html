@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <script>(function(){var t=localStorage.cloudPuzzleTheme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t}())</script>
+  <title>Cloud Puzzle</title><link rel="stylesheet" href="style.css?v=6"><link rel="stylesheet" href="landing.css?v=7"><link rel="stylesheet" href="game.css?v=6"><link rel="stylesheet" href="game-refinement.css?v=8">
+</head>
+<body>
+  <header class="site-header"><a class="brand" href="/" aria-label="Cloud Puzzle home"><span class="brand-mark">CP</span><span>Cloud Puzzle</span></a><div class="header-actions"><span class="tagline">Piece it together, together.</span><button id="theme" class="icon-button" type="button" aria-label="Switch theme"><span>Theme</span></button></div></header>
+  <main>
+    <section id="home" class="home-screen">
+      <div class="landing-content"><h1>CLOUD PUZZLE</h1><p>Bring a picture. Solve it together.</p><div class="landing-actions"><button id="create-entry" class="landing-button create-button" type="button">CREATE GAME</button><button id="join-entry" class="landing-button join-button" type="button">JOIN GAME</button></div></div>
+      <form id="create-form" hidden><input id="create-name" required><input id="image" type="file" accept="image/*" required><select id="count"></select><select id="size"><option value="5">5 × 5</option><option value="6">6 × 6</option><option value="9" selected>9 × 9</option></select><button id="create" type="submit">Create</button><p id="create-message"></p></form>
+      <form id="join-form" hidden><input id="join-name" required><input id="code" required><button id="join" type="submit">Join</button><p id="join-message"></p></form>
+    </section>
+    <dialog id="setup-dialog"><form id="setup-form"><h2 id="setup-title"></h2><div id="setup-fields"></div><p id="setup-message" class="form-message" role="alert"></p><div class="dialog-actions"><button id="setup-cancel" type="button">Cancel</button><button id="setup-submit" class="dialog-submit" type="submit">Continue</button></div></form></dialog>
+    <section id="game" class="game-screen" hidden>
+      <div class="game-header card"><div><p class="eyebrow">You’re in a room</p><div class="room-line"><h1 id="room"></h1><button id="copy-room" class="copy-button" type="button">Copy code</button></div></div><div class="player-chip"><span id="player-dot"></span><span id="player-name"></span><small id="player-region"></small></div><div id="connection" class="connection"><span id="connection-dot"></span><span id="connection-status">Connecting</span><span id="connected-count"></span></div></div>
+      <div id="game-message" class="notice" role="status"></div><div class="game-toolbar"><div><button id="preview" class="tool-button icon-button" type="button" aria-label="Preview correct region" title="Preview correct region"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg></button><details class="options"><summary>Options</summary><label class="check-label"><input id="debug" type="checkbox"> Show tile coordinates</label></details></div><button id="leave" class="text-button" type="button">Back home</button></div>
+      <div id="active-content" class="game-layout"><div class="play-column card"><div class="section-heading"><div><h2 id="region-label"></h2><p id="region-meta" class="muted"></p><div class="your-progress" aria-hidden="true"><div id="player-progress"></div></div></div><span id="game-status" class="status-pill" hidden></span></div><div id="board" aria-label="Your puzzle region"></div></div><aside class="side-column"><div class="card reference-card"><div class="section-heading"><h2>Original image</h2></div><img id="reference" alt="Original uploaded puzzle image"></div><div class="card progress-card"><div class="section-heading"><h2>Players</h2></div><div id="players"></div></div></aside></div>
+      <section id="completion" class="card completion" hidden><div class="confetti-mark">DONE</div><p class="eyebrow">Everyone got there</p><h1>Puzzle completed!</h1><p class="hero-copy">You pieced it together, together.</p><img id="completed-image" alt="Completed puzzle image"><div id="final-players" class="final-players"></div><button id="play-again" class="primary" type="button">Back home</button></section>
+    </section>
+  </main>
+  <script src="app.js?v=6"></script>
+</body>
+</html>

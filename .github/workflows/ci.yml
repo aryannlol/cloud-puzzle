@@ -1,0 +1,50 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test & Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax check
+        run: |
+          node --check server.js
+          node --check test.js
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Validate Docker build
+        run: docker build -t cloud-puzzle:ci .
+
+  deploy:
+    name: Deploy to Render (Optional Deploy Hook)
+    needs: test
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook (if configured)
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$DEPLOY_HOOK" ]; then
+            echo "Triggering Render deployment hook..."
+            curl -f -sS -X POST "$DEPLOY_HOOK"
+            echo "Deployment hook triggered successfully."
+          else
+            echo "RENDER_DEPLOY_HOOK_URL secret not set. Relying on Render's native CI-gated Auto-Deploy."
+          fi

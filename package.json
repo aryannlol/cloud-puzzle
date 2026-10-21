@@ -1,0 +1,6 @@
+{
+  "name": "cloud-puzzle",
+  "private": true,
+  "engines": { "node": ">=22.5.0" },
+  "scripts": { "start": "node server.js", "test": "node test.js" }
+}

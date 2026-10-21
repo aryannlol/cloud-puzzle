@@ -1,0 +1,6 @@
+data/
+*.sqlite*
+node_modules/
+.git
+.github
+*.log

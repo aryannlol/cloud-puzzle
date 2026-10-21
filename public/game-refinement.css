@@ -1,0 +1,146 @@
+body.in-game{background:var(--bg)!important}
+body.in-game #home{display:none!important}
+body.in-game #game{display:block!important}
+body:has(#game:not([hidden])) .site-header{padding-top:10px;padding-bottom:8px}
+body:has(#game:not([hidden])) main{padding-top:8px;padding-bottom:28px}
+.game-screen .game-header{padding-top:4px;padding-bottom:10px}
+.game-screen .game-toolbar{margin-top:10px;margin-bottom:6px}
+.game-screen .game-layout{gap:24px}
+.game-screen .play-column>div:last-child{display:grid;grid-template-columns:repeat(var(--region-columns),var(--cell-size));grid-auto-rows:var(--cell-size);width:calc(var(--region-columns) * var(--cell-size));height:calc(var(--grid-size) * var(--cell-size));max-width:100%;margin-left:auto;margin-right:auto;aspect-ratio:auto}
+.game-screen .cell{width:var(--cell-size);height:var(--cell-size)}
+.game-screen .reference-card img{max-height:240px}
+.game-screen .side-column{gap:16px}
+.game-screen .progress-card{padding-top:10px}
+body:has(#completion:not([hidden]))::before{content:"";position:fixed;inset:0;z-index:20;background:#006b2ecc}
+body:has(#completion:not([hidden])) .completion{position:fixed;z-index:21;top:50%;left:50%;transform:translate(-50%,-50%);width:min(620px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;margin:0;padding:30px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px #003d1f55}
+@media(min-width:721px){.game-screen .play-column>div:last-child{--cell-size:min(calc((100vh - 245px) / var(--grid-size)),calc((100vw - 440px) / var(--region-columns)))}} 
+@media(max-width:720px){body:has(#game:not([hidden])) main{padding-top:4px}.game-screen .game-header{padding-top:0}.game-screen .play-column>div:last-child{--cell-size:min(calc((100vh - 310px) / var(--grid-size)),calc((100vw - 30px) / var(--region-columns)));width:calc(var(--region-columns) * var(--cell-size));height:calc(var(--grid-size) * var(--cell-size));max-width:100%}.game-screen .side-column{gap:16px}}
+
+
+/* Refinement: preserve the source image's proportions in every region. */
+.game-screen .play-column>div:last-child {
+  display: grid;
+  grid-template-columns: repeat(var(--region-columns), var(--cell-width));
+  grid-auto-rows: var(--cell-height);
+  width: calc(var(--region-columns) * var(--cell-width));
+  height: calc(var(--grid-size) * var(--cell-height));
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--surface);
+  border: 2px solid var(--green);
+  border-radius: 6px;
+  gap: 1px;
+}
+.game-screen .cell {
+  width: var(--cell-width);
+  height: var(--cell-height);
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background-repeat: no-repeat;
+  touch-action: manipulation;
+}
+.game-screen .cell:hover { filter: brightness(1.04); }
+.game-screen .cell.selected { outline: 3px solid var(--yellow); outline-offset: -3px; z-index: 2; }
+.game-screen .cell.region-0,
+.game-screen .cell.region-1 { border: 0; }
+.game-screen .reference-card img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: auto;
+  max-height: 260px;
+  object-fit: contain;
+}
+.game-screen .game-layout { align-items: start; }
+.game-screen .game-header { min-height: 76px; }
+.game-screen .section-heading { margin-bottom: 12px; }
+.game-screen .eyebrow { color: var(--deep-green); }
+.game-screen .muted,
+.game-screen .player-region,
+.game-screen .check-label,
+.game-screen .connection { color: var(--muted); }
+@media (min-width: 721px) {
+  .game-screen .game-layout {
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 24px;
+  }
+}
+@media (max-width: 720px) {
+  .game-screen .game-layout { display: flex; flex-direction: column; gap: 20px; }
+  .game-screen .play-column { width: 100%; padding: 0; }
+  .game-screen .play-column>div:last-child { max-width: 100%; }
+  .game-screen .side-column { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .game-screen .reference-card img { width: min(100%, 360px); max-height: 240px; object-position: left center; }
+  .game-screen .progress-card { border: 0; border-top: 1px solid var(--line); padding: 14px 0 0; }
+  .game-screen .game-toolbar { flex-direction: row; flex-wrap: wrap; }
+  .game-screen .game-toolbar>div { flex-direction: row; flex-wrap: wrap; }
+}
+@media (max-width: 420px) {
+  .game-screen .game-header { align-items: flex-start; }
+  .game-screen .room-line h1 { font-size: 18px; letter-spacing: .04em; }
+  .game-screen .section-heading { flex-wrap: wrap; }
+  .game-screen .game-toolbar { gap: 8px; }
+  .game-screen .tool-button, .game-screen .copy-button { min-height: 42px; }
+}
+body.in-game{background:var(--bg)!important}
+body.in-game #home{display:none!important}
+body.in-game #game{display:block!important}
+body:has(#game:not([hidden])) .home-screen{display:none!important}
+[hidden]{display:none!important}
+
+.game-screen .game-toolbar{align-items:center;margin:8px auto 12px}
+.game-screen .game-header .player-chip,.game-screen .game-header .connection{display:none}
+.game-screen .game-toolbar>div{gap:10px}
+.game-screen .tool-button.icon-button{width:40px;height:40px;min-width:40px;padding:0;display:grid;place-items:center;border-radius:8px}
+.game-screen .tool-button.icon-button svg{width:21px;height:21px}
+.game-screen .options{position:relative;color:var(--muted);font-size:13px}
+.game-screen .options summary{cursor:pointer;list-style:none}
+.game-screen .options summary::-webkit-details-marker{display:none}
+.game-screen .options summary::after{content:' +';color:var(--green);font-weight:900}
+.game-screen .options[open] summary::after{content:' −'}
+.game-screen .options .check-label{position:absolute;z-index:4;top:26px;left:0;width:190px;padding:9px 10px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.game-screen .play-column{padding:0}
+.game-screen .section-heading{margin-bottom:12px}
+.game-screen .section-heading h2{font-size:21px}
+.game-screen .status-pill{display:none}
+.game-screen .your-progress{width:min(280px,100%);height:6px;margin-top:8px;background:var(--surface-2);border-radius:99px;overflow:hidden}
+.game-screen .your-progress div{height:100%;width:0;background:var(--blue);border-radius:inherit;transition:none}
+.game-screen .reference-card,.game-screen .progress-card{padding:0}
+.game-screen .reference-card .section-heading,.game-screen .progress-card .section-heading{margin-bottom:8px}
+.game-screen .reference-card h2,.game-screen .progress-card h2{font-size:16px}
+.game-screen .side-column{gap:18px}
+body:has(#game:not([hidden])) main{max-width:1180px;padding:8px 20px 28px}
+body:has(#game:not([hidden])) .brand{color:var(--text)!important}
+.game-screen .game-header{min-height:0;padding:0 0 8px}
+.game-screen .room-line h1{color:var(--text)}
+.game-screen .game-toolbar{max-width:1180px;margin:6px auto 10px}
+.game-screen .notice{min-height:0}
+.game-screen .game-layout{max-width:1180px;gap:18px}
+.game-screen .game-layout .side-column{width:220px}
+.game-screen .reference-card img{max-height:220px}
+.game-screen .player{padding:7px 0}
+.game-screen .player-region,.game-screen .player small{display:none}
+.game-screen .copy-button{min-width:84px;height:36px;padding:0 10px;white-space:nowrap}
+.game-screen .text-button{min-height:36px;white-space:nowrap}
+.game-screen .play-column>div:last-child{max-height:none}
+@media(max-width:720px){
+  body:has(#game:not([hidden])) main{padding:6px max(14px,env(safe-area-inset-right)) 28px max(14px,env(safe-area-inset-left))}
+  .game-screen .game-layout{display:flex;flex-direction:column;gap:18px}
+  .game-screen .game-layout .side-column{width:100%;display:flex;flex-direction:column;gap:18px}
+  .game-screen .game-toolbar,.game-screen .game-toolbar>div{flex-direction:row;align-items:center;flex-wrap:wrap}
+  .game-screen .play-column>div:last-child{max-width:100%;max-height:none}
+  .game-screen .reference-card img{width:min(100%,320px);max-height:none}
+}
+@media(max-width:360px){
+  .game-screen .game-toolbar{justify-content:space-between;gap:6px}
+  .game-screen .game-toolbar>div{min-width:0;gap:6px}
+  .game-screen .options{font-size:11px}
+  .game-screen .text-button{min-width:0;padding:0 2px;font-size:12px}
+  .game-screen .room-line{gap:6px;flex-wrap:wrap}
+  .game-screen .room-line h1{font-size:16px}
+  .game-screen .copy-button{min-width:76px;width:76px;font-size:11px}
+  .game-screen .section-heading h2{font-size:18px}
+}
