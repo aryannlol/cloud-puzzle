@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let game, player, events, selected = null, preview = false, debug = false, pending = false, notice = '';
-const identity = sessionStorage.puzzlePlayer || crypto.randomUUID(); sessionStorage.puzzlePlayer = identity;
+const identity = localStorage.puzzlePlayer || sessionStorage.puzzlePlayer || crypto.randomUUID(); localStorage.puzzlePlayer = sessionStorage.puzzlePlayer = identity;
 const themeNames = { light:'Light', dark:'Dark', system:'System' };
 
 function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(async response => { const result = await response.json(); if (!response.ok) throw Error(result.error); return result; }); }
@@ -106,7 +106,42 @@ function normalizedImage(file) {
     reader.readAsDataURL(file);
   });
 }
-async function joinRoom(code, name, resume = false) { try { const result = await post('/api/games/' + code + '/join', { id:identity, name }); player = result.player; game = result.game; sessionStorage.puzzleRoom = game.code; sessionStorage.puzzleName = player.name; selected = null; preview = false; notice = ''; events && events.close(); events = new EventSource('/api/games/' + code + '/events'); events.onopen = () => { $('connection-status').textContent = 'Connected'; $('connection').classList.remove('offline'); }; events.onerror = () => { $('connection-status').textContent = 'Reconnecting…'; $('connection').classList.add('offline'); }; events.onmessage = event => { game = JSON.parse(event.data); selected = null; render(); }; render(); } catch (error) { if (resume) showMessage('Room reconnect failed: ' + error.message); else homeMessage(code === $('code').value.trim().toUpperCase() ? 'join-message' : 'create-message', error.message); } }
+async function joinRoom(code, name, resume = false) {
+  try {
+    const result = await post('/api/games/' + code + '/join', { id:identity, name });
+    player = result.player; game = result.game;
+    localStorage.puzzleRoom = sessionStorage.puzzleRoom = game.code;
+    localStorage.puzzleName = sessionStorage.puzzleName = player.name;
+    try { history.replaceState(null, '', '?room=' + game.code); } catch {}
+    selected = null; preview = false; notice = '';
+    events && events.close();
+    events = new EventSource('/api/games/' + code + '/events');
+    events.onopen = () => { $('connection-status').textContent = 'Connected'; $('connection').classList.remove('offline'); };
+    events.onerror = () => { $('connection-status').textContent = 'Reconnecting…'; $('connection').classList.add('offline'); };
+    events.onmessage = event => {
+      const data = JSON.parse(event.data);
+      if (data.expired) {
+        leaveHome();
+        if ($('home-status')) $('home-status').textContent = data.message || 'Room was closed due to 5 minutes of inactivity.';
+        localStorage.removeItem('puzzleRoom');
+        checkResumeBanner();
+        return;
+      }
+      game = data; selected = null; render();
+    };
+    render();
+  } catch (error) {
+    if (resume) {
+      if ($('home-status')) $('home-status').textContent = error.message.includes('Not found') ? 'Room ' + code + ' is no longer active (expired after 5m or server restarted).' : 'Reconnecting failed: ' + error.message;
+      localStorage.removeItem('puzzleRoom');
+      sessionStorage.removeItem('puzzleRoom');
+      try { history.replaceState(null, '', window.location.pathname); } catch {}
+      checkResumeBanner();
+    } else {
+      homeMessage(code === $('code').value.trim().toUpperCase() ? 'join-message' : 'create-message', error.message);
+    }
+  }
+}
 
 $('theme').onclick = cycleTheme; applyTheme(localStorage.cloudPuzzleTheme || 'system'); updatePlayerOptions(); $('size').onchange = updatePlayerOptions;
 $('create-entry').onclick = () => openSetup('create');
@@ -136,7 +171,45 @@ $('solve-btn').onclick = triggerSolve;
 window.addEventListener('keydown', e => { if (e.shiftKey && (e.key === 'S' || e.key === 's')) triggerSolve(); });
 $('reference').onerror = () => { $('reference').removeAttribute('src'); $('reference').alt = 'Original image could not be loaded'; showMessage('The original image could not be loaded. Refresh and create the room again.'); };
 $('copy-room').onclick = async () => { try { await navigator.clipboard.writeText(game.code); $('copy-room').textContent = 'Copied!'; setTimeout(() => $('copy-room').textContent = 'Copy code', 1400); } catch { showMessage('Copy was not available. Room code: ' + game.code); } };
-function leaveHome() { events && events.close(); game = player = null; sessionStorage.removeItem('puzzleRoom'); sessionStorage.removeItem('puzzleName'); document.body.classList.remove('in-game'); $('completion').hidden = true; $('active-content').hidden = false; $('game-message').textContent = ''; $('game').hidden = true; $('game').style.display = ''; $('home').hidden = false; $('home').style.display = ''; }
+function checkResumeBanner() {
+  const lastRoom = localStorage.puzzleRoom;
+  if (lastRoom && $('resume-container') && $('resume-code')) {
+    $('resume-container').style.display = 'block';
+    $('resume-code').textContent = lastRoom;
+  } else if ($('resume-container')) {
+    $('resume-container').style.display = 'none';
+  }
+}
+function leaveHome() {
+  events && events.close();
+  game = player = null;
+  sessionStorage.removeItem('puzzleRoom');
+  sessionStorage.removeItem('puzzleName');
+  try { history.replaceState(null, '', window.location.pathname); } catch {}
+  document.body.classList.remove('in-game');
+  $('completion').hidden = true;
+  $('active-content').hidden = false;
+  $('game-message').textContent = '';
+  $('game').hidden = true;
+  $('game').style.display = '';
+  $('home').hidden = false;
+  $('home').style.display = '';
+  checkResumeBanner();
+}
 $('leave').onclick = leaveHome; $('play-again').onclick = leaveHome;
+if ($('resume-btn')) {
+  $('resume-btn').onclick = () => {
+    const code = localStorage.puzzleRoom;
+    const name = localStorage.puzzleName || 'Player';
+    if (code) joinRoom(code, name, true);
+  };
+}
 window.addEventListener('resize', () => { if (game && player) render(); });
-if (sessionStorage.puzzleRoom && sessionStorage.puzzleName) joinRoom(sessionStorage.puzzleRoom, sessionStorage.puzzleName, true);
+const urlParams = new URLSearchParams(window.location.search);
+const targetRoom = urlParams.get('room') || sessionStorage.puzzleRoom || localStorage.puzzleRoom;
+const targetName = sessionStorage.puzzleName || localStorage.puzzleName || 'Player';
+if (targetRoom) {
+  joinRoom(targetRoom, targetName, true);
+} else {
+  checkResumeBanner();
+}

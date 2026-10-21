@@ -88,13 +88,36 @@ function loadGames() {
   const players = db.prepare('SELECT game_code, id, name, owner FROM players ORDER BY owner').all();
   for (const row of rows) {
     try {
-      const game = { code: row.code, image: row.image, size: row.size, playerCount: row.player_count, board: JSON.parse(row.board_json), tiles: JSON.parse(row.tiles_json), createdAt: row.created_at, players: players.filter(player => player.game_code === row.code).map(({ game_code, ...player }) => player), done: Boolean(row.done) };
+      const game = { code: row.code, image: row.image, size: row.size, playerCount: row.player_count, board: JSON.parse(row.board_json), tiles: JSON.parse(row.tiles_json), createdAt: row.created_at, lastActiveAt: Date.now(), players: players.filter(player => player.game_code === row.code).map(({ game_code, ...player }) => player), done: Boolean(row.done) };
       if (game.board.length === game.size * game.size && game.tiles.length === game.size * game.size) games.set(game.code, game);
     } catch (error) {
       throw new Error('Failed to restore persisted room ' + row.code + ': ' + error.message);
     }
   }
 }
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+function deleteGame(code) {
+  const game = games.get(code);
+  if (!game) return;
+  const list = clients.get(code) || [];
+  for (const client of list) {
+    try {
+      client.write('data: ' + JSON.stringify({ expired: true, message: 'Room expired due to 5 minutes of inactivity.' }) + '\n\n');
+      client.end();
+    } catch {}
+  }
+  clients.delete(code);
+  games.delete(code);
+  try { db.prepare('DELETE FROM games WHERE code = ?').run(code); } catch {}
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, game] of games.entries()) {
+    if (now - (game.lastActiveAt || 0) > IDLE_TIMEOUT_MS) {
+      deleteGame(code);
+    }
+  }
+}, 15000).unref();
 function closePersistence() { db.close(); }
 function publicGame(game) {
   const tileById = new Map(game.tiles.map(t => [t.id, t]));
@@ -117,12 +140,13 @@ const server = http.createServer(async (req, res) => {
       if (image.length > 12 * 1024 * 1024) return json(res, 400, { error: 'The image is too large.' });
       if (!/^data:image\/[a-z0-9.+-]+;base64,/.test(image)) return json(res, 400, { error: 'The image format is invalid.' });
       if (![5, 6, 9].includes(size) || count < 2 || count > size || !String(data.image || '').startsWith('data:image/')) return json(res, 400, { error: 'Choose a 5×5, 6×6, or 9×9 game with no more players than columns.' });
-      const code = id().toUpperCase(), tiles = makeTiles(count, size), game = { code, image, size, playerCount: count, tiles, board: scramble(tiles, size), players: [], createdAt: new Date().toISOString(), done: false };
+      const code = id().toUpperCase(), tiles = makeTiles(count, size), game = { code, image, size, playerCount: count, tiles, board: scramble(tiles, size), players: [], createdAt: new Date().toISOString(), lastActiveAt: Date.now(), done: false };
       try { persistGame(game); } catch { return json(res, 500, { error: 'The game could not be saved.' }); }
       games.set(code, game); return json(res, 201, { code });
     }
     if (parts[0] !== 'api' || parts[1] !== 'games' || !games.has(parts[2])) return json(res, 404, { error: 'Not found' });
     const game = games.get(parts[2]);
+    game.lastActiveAt = Date.now();
     if (req.method === 'GET' && parts[3] === 'events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       const list = clients.get(game.code) || []; list.push(res); clients.set(game.code, list); res.write('data: ' + JSON.stringify(publicGame(game)) + '\n\n');
@@ -180,4 +204,4 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
-module.exports = { ownership, makeTiles, scramble, swap, progress, persistGame, loadGames, closePersistence, games, server };
+module.exports = { ownership, makeTiles, scramble, swap, progress, persistGame, loadGames, closePersistence, deleteGame, games, server };
