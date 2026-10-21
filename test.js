@@ -95,6 +95,10 @@ async function persistenceChecks() {
     assert.equal(resume2.status, 200);
     assert.deepEqual((await resume1.json()).game.board, restored.board);
     assert.deepEqual((await resume2.json()).game.board, restored.board);
+    const solveRes = await fetch(base + '/api/games/' + code + '/solve', { method: 'POST' });
+    assert.equal(solveRes.status, 200);
+    const solvedEvent = await firstEvent(await fetch(base + '/api/games/' + code + '/events'));
+    assert.equal(solvedEvent.done, true);
     console.log('SQLite test database: ' + path.resolve(testDir, 'test.sqlite'));
   } finally {
     await stopServer(child);

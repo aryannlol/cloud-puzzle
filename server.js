@@ -145,6 +145,12 @@ const server = http.createServer(async (req, res) => {
       try { persistGame(game); } catch { [game.board[from], game.board[to]] = [game.board[to], game.board[from]]; game.done = complete(game); return json(res, 500, { error: 'The move could not be saved.' }); }
       broadcast(game); return json(res, 200, { ok: true });
     }
+    if (req.method === 'POST' && parts[3] === 'solve') {
+      game.board = game.tiles.map(t => t.id);
+      game.done = true;
+      try { persistGame(game); } catch { return json(res, 500, { error: 'The solve could not be saved.' }); }
+      broadcast(game); return json(res, 200, { ok: true });
+    }
     json(res, 405, { error: 'Method not allowed' });
   } catch (e) { json(res, 400, { error: 'Bad request' }); }
 });
