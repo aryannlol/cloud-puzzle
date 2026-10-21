@@ -1,7 +1,11 @@
 const $ = id => document.getElementById(id);
 let game, player, events, selected = null, preview = false, debug = false, pending = false, notice = '';
-// Use sessionStorage so each tab gets its own identity (allows multi-tab testing as different players).
-const identity = sessionStorage.puzzlePlayer || crypto.randomUUID(); sessionStorage.puzzlePlayer = identity;
+// Fresh page loads and duplicated tabs get a new UUID; reloads/back-forward keep the same one.
+// This lets two browser tabs join the same room as different players without losing identity on refresh.
+const _navType = performance.getEntriesByType('navigation')[0]?.type;
+const _isReload = _navType === 'reload' || _navType === 'back_forward';
+const identity = (_isReload && sessionStorage.puzzlePlayer) ? sessionStorage.puzzlePlayer : crypto.randomUUID();
+sessionStorage.puzzlePlayer = identity;
 const themeNames = { light:'Light', dark:'Dark', system:'System' };
 
 function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(async response => { const result = await response.json(); if (!response.ok) throw Error(result.error); return result; }); }
