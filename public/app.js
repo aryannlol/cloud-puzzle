@@ -7,7 +7,7 @@ function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-
 function escapeHTML(text) { return String(text).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function showMessage(text, error = true) { notice = text; $('game-message').textContent = text; $('game-message').style.color = error ? 'var(--coral)' : 'var(--mint)'; }
 function homeMessage(id, text) { $(id).textContent = text; }
-function applyTheme(choice) { const actual = choice === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = actual; localStorage.cloudPuzzleTheme = choice; $('theme').innerHTML = '<span>Theme: ' + themeNames[choice] + '</span>'; }
+function applyTheme(choice) { const actual = choice === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = actual; localStorage.cloudPuzzleTheme = choice; if ($('theme')) $('theme').innerHTML = '<span>Theme: ' + themeNames[choice] + '</span>'; if ($('theme-in-game')) $('theme-in-game').textContent = 'Theme: ' + themeNames[choice]; }
 function cycleTheme() { const current = localStorage.cloudPuzzleTheme || 'system', next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system'; applyTheme(next); }
 function tileStyle(tile) {
   const last = Math.max(1, game.size - 1);
@@ -31,7 +31,7 @@ function openSetup(mode) {
 function renderProgress() {
   $('players').innerHTML = game.players.map(p => {
     const percentage = Math.round(p.correct / p.total * 100);
-    return '<div class="player player-' + p.owner + '"><div class="player-top"><div><div class="player-name">' + escapeHTML(p.name) + '</div><div class="player-region">Player ' + (p.owner + 1) + ' · ' + regionLabel(p.owner) + '</div></div><strong>' + percentage + '%</strong></div><div class="progress-track"><div class="progress-fill" style="width:' + percentage + '%"></div></div><small>' + p.correct + ' of ' + p.total + ' tiles correct</small></div>';
+    return '<div class="player player-' + p.owner + '"><div class="player-top"><div class="player-name">' + escapeHTML(p.name) + '</div><strong>' + percentage + '%</strong></div><div class="progress-track"><div class="progress-fill" style="width:' + percentage + '%"></div></div><small>' + p.correct + ' of ' + p.total + ' tiles</small></div>';
   }).join('');
 }
 function renderCompletion() {
@@ -51,16 +51,17 @@ function render() {
   $('game-status').textContent = game.done ? 'Complete' : game.players.length < game.playerCount ? 'Waiting for players' : preview ? 'Preview only' : 'Your turn'; $('preview').textContent = preview ? 'Exit preview' : 'Preview correct region'; $('debug').checked = debug; if ($('reference').getAttribute('src') !== game.image) { $('reference').onload = () => { if (game && player) render(); }; $('reference').src = game.image; }
   $('region-label').textContent = player.name + ' · Player ' + (player.owner + 1) + ' · ' + regionLabel(player.owner);
   $('player-progress').style.width = Math.round(mine.correct / mine.total * 100) + '%';
-  $('preview').innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>';
+  $('preview').innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg><span>' + (preview ? 'Exit' : 'Preview') + '</span>';
   const columns = region.end - region.start;
   const imageAspect = (() => {
     const cached = $('reference');
     return cached.naturalWidth > 0 && cached.naturalHeight > 0 ? cached.naturalWidth / cached.naturalHeight : 1;
   })();
-  const mobile = window.innerWidth <= 720;
-  const availableHeight = mobile ? Number.POSITIVE_INFINITY : Math.max(120, window.innerHeight - $('board').getBoundingClientRect().top - 24);
+  const mobile = window.innerWidth <= 768;
+  const boardTop = ($('board').getBoundingClientRect && $('board').getBoundingClientRect().top) || 75;
+  const availableHeight = mobile ? Number.POSITIVE_INFINITY : Math.max(160, window.innerHeight - boardTop - 24);
   const availableWidth = Math.max(160, $('board').parentElement.clientWidth);
-  const cellWidth = Math.max(12, Math.min(availableWidth / columns, availableHeight * imageAspect / game.size));
+  const cellWidth = Math.max(16, Math.min(availableWidth / columns, availableHeight * imageAspect / game.size));
   const cellHeight = cellWidth / imageAspect;
   $('board').style.setProperty('--region-columns', columns);
   $('board').style.setProperty('--grid-size', game.size);
@@ -213,3 +214,8 @@ if (targetRoom) {
 } else {
   checkResumeBanner();
 }
+
+if ($('thumb-btn')) $('thumb-btn').onclick = () => { if (game && game.image) { $('modal-img').src = game.image; $('image-modal').showModal(); } };
+if ($('close-modal-btn')) $('close-modal-btn').onclick = () => $('image-modal').close();
+if ($('image-modal')) $('image-modal').onclick = e => { if (e.target === $('image-modal')) $('image-modal').close(); };
+if ($('theme-in-game')) $('theme-in-game').onclick = cycleTheme;
