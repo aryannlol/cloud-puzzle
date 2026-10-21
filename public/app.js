@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let game, player, events, selected = null, preview = false, debug = false, pending = false, notice = '';
-const identity = localStorage.puzzlePlayer || sessionStorage.puzzlePlayer || crypto.randomUUID(); localStorage.puzzlePlayer = sessionStorage.puzzlePlayer = identity;
+// Use sessionStorage so each tab gets its own identity (allows multi-tab testing as different players).
+const identity = sessionStorage.puzzlePlayer || crypto.randomUUID(); sessionStorage.puzzlePlayer = identity;
 const themeNames = { light:'Light', dark:'Dark', system:'System' };
 
 function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(async response => { const result = await response.json(); if (!response.ok) throw Error(result.error); return result; }); }
