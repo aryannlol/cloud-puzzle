@@ -12,7 +12,7 @@ function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-
 function escapeHTML(text) { return String(text).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function showMessage(text, error = true) { notice = text; $('game-message').textContent = text; $('game-message').style.color = error ? 'var(--coral)' : 'var(--mint)'; }
 function homeMessage(id, text) { $(id).textContent = text; }
-function applyTheme(choice) { const actual = choice === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = actual; localStorage.cloudPuzzleTheme = choice; if ($('theme')) $('theme').innerHTML = '<span>Theme: ' + themeNames[choice] + '</span>'; if ($('theme-in-game')) $('theme-in-game').textContent = 'Theme: ' + themeNames[choice]; }
+function applyTheme(choice) { const actual = choice === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = actual; localStorage.cloudPuzzleTheme = choice; if ($('theme')) $('theme').textContent = 'Theme: ' + themeNames[choice]; if ($('theme-in-game')) $('theme-in-game').textContent = 'Theme: ' + themeNames[choice]; }
 function cycleTheme() { const current = localStorage.cloudPuzzleTheme || 'system', next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system'; applyTheme(next); }
 function tileStyle(tile) {
   const last = Math.max(1, game.size - 1);
@@ -189,7 +189,7 @@ async function joinRoom(code, name, resume = false) {
   }
 }
 
-$('theme').onclick = cycleTheme; applyTheme(localStorage.cloudPuzzleTheme || 'system'); updatePlayerOptions(); $('size').onchange = updatePlayerOptions;
+if ($('theme')) $('theme').onclick = cycleTheme; applyTheme(localStorage.cloudPuzzleTheme || 'system'); updatePlayerOptions(); $('size').onchange = updatePlayerOptions;
 $('create-entry').onclick = () => openSetup('create');
 $('join-entry').onclick = () => openSetup('join');
 $('setup-cancel').onclick = () => $('setup-dialog').close();

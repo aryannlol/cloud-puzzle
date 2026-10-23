@@ -11,21 +11,16 @@
   <link rel="stylesheet" href="game-refinement.css?v=10">
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="/" aria-label="Cloud Puzzle home"><span class="brand-mark">CP</span><span>Cloud Puzzle</span></a>
-    <div class="header-actions">
-      <span class="tagline">Piece it together, together.</span>
-      <button id="theme" class="icon-button" type="button" aria-label="Switch theme"><span>Theme</span></button>
-    </div>
-  </header>
+
 
   <main>
     <section id="home" class="home-screen">
+      <button id="theme" class="home-theme-btn" type="button" aria-label="Switch theme">Theme</button>
       <div class="landing-content">
         <h1>CLOUD PUZZLE</h1>
         <p>Bring a picture. Solve it together.</p>
         <div id="resume-container" style="display:none;margin-bottom:16px;">
-          <button id="resume-btn" class="landing-button" style="background:var(--blue);color:var(--white);width:100%;max-width:360px;padding:14px;border-radius:10px;font-weight:900;" type="button">↩️ RESUME ROOM (<span id="resume-code"></span>)</button>
+          <button id="resume-btn" class="landing-button" style="background:var(--blue);color:var(--white);width:100%;max-width:360px;padding:14px;border-radius:10px;font-weight:900;" type="button">RESUME ROOM (<span id="resume-code"></span>)</button>
         </div>
         <div class="landing-actions">
           <button id="create-entry" class="landing-button create-button" type="button">CREATE GAME</button>
@@ -42,10 +37,6 @@
     <section id="game" class="game-screen" hidden>
       <header class="game-topbar">
         <div class="topbar-left">
-          <a class="brand game-brand" href="/" aria-label="Cloud Puzzle home">
-            <span class="brand-mark">CP</span>
-            <span class="brand-name">Cloud Puzzle</span>
-          </a>
           <div class="room-badge">
             <span id="connection-dot" class="connection-dot" title="Connected"></span>
             <span class="room-label">Room</span>
@@ -99,7 +90,7 @@
           <div class="thumb-card" title="Click to view full image">
             <div class="thumb-header">
               <span class="utility-heading">Original</span>
-              <span class="thumb-hint">🔍 Expand</span>
+              <span class="thumb-hint">Expand</span>
             </div>
             <button id="thumb-btn" type="button" class="thumb-btn" aria-label="Expand original image">
               <img id="reference" alt="Original uploaded puzzle image">
