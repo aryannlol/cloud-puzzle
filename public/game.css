@@ -268,9 +268,9 @@ body.in-game main {
 /* Puzzle Board */
 #board {
   display: grid;
-  grid-template-columns: repeat(var(--region-columns, 5), var(--cell-width, 60px));
+  grid-template-columns: repeat(var(--grid-size, var(--region-columns, 5)), var(--cell-width, 60px));
   grid-auto-rows: var(--cell-height, 60px);
-  width: calc(var(--region-columns, 5) * var(--cell-width, 60px));
+  width: calc(var(--grid-size, var(--region-columns, 5)) * var(--cell-width, 60px));
   height: calc(var(--grid-size, 5) * var(--cell-height, 60px));
   max-width: 100%;
   margin: 0 auto;

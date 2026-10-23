@@ -1,11 +1,8 @@
 const $ = id => document.getElementById(id);
 let game, player, events, selected = null, preview = false, debug = false, inflight = 0, hint = null, notice = '';
-// Fresh page loads and duplicated tabs get a new UUID; reloads/back-forward keep the same one.
-// This lets two browser tabs join the same room as different players without losing identity on refresh.
+// Unique per-tab identifier: preserved across reloads of this tab, fresh for new tabs/windows.
 const _navType = performance.getEntriesByType('navigation')[0]?.type;
 const _isReload = _navType === 'reload' || _navType === 'back_forward';
-let identity = (_isReload && sessionStorage.puzzlePlayer) ? sessionStorage.puzzlePlayer : crypto.randomUUID();
-sessionStorage.puzzlePlayer = identity;
 const themeNames = { light:'Light', dark:'Dark', system:'System' };
 
 function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(async response => { const result = await response.json(); if (!response.ok) throw Error(result.error); return result; }); }
@@ -51,13 +48,16 @@ function renderCompletion() {
 function inMyRegion(position) { const r = regionBounds(player.owner), col = position % game.size; return col >= r.start && col < r.end; }
 function recount(p) { return game.board.reduce((n, id, pos) => n + (id === Math.floor(pos / game.size) + '-' + pos % game.size && game.tiles[pos].owner === p.owner ? 1 : 0), 0); }
 function applyServerState(data) {
-  const full = Array.isArray(data.tiles);                       // first message after (re)connect carries everything
-  const prev = game, mineBefore = prev.board.filter((_, i) => inMyRegion(i)).join();
-  const board = (full && inflight === 0) ? data.board : prev.board.map((id, i) => inMyRegion(i) ? id : data.board[i]);
+  const prev = game;
+  if (player && Array.isArray(data.players)) {
+    const me = data.players.find(p => p.id === player.id);
+    if (me) player = { ...player, ...me };
+  }
+  const board = (inflight > 0)
+    ? prev.board.map((id, i) => inMyRegion(i) ? id : data.board[i])
+    : data.board;
   game = { ...prev, ...data, board, tiles: data.tiles || prev.tiles, image: prev.image };
-  const mineAfter = game.board.filter((_, i) => inMyRegion(i)).join();
-  if (mineBefore !== mineAfter || data.done || full || data.players.length !== prev.players.length) { selected = mineBefore !== mineAfter ? null : selected; render(); }
-  else { renderProgress(); const me = game.players.find(p => p.owner === player.owner); if (me) { $('region-meta').textContent = me.correct + '/' + me.total + ' tiles correct · ' + Math.round(me.correct / me.total * 100) + '%'; $('player-progress').style.width = Math.round(me.correct / me.total * 100) + '%'; } $('connected-count').textContent = game.players.length + '/' + game.playerCount + ' joined'; }
+  render();
 }
 function layoutBoard() {
   if (!game || !player || !game.size) return;
@@ -66,8 +66,8 @@ function layoutBoard() {
   const availableWidth = Math.max(120, $('board').parentElement.clientWidth - 4);
   // Full NxN square board: cells are always square, sized to fit both axes
   const cellSize = Math.max(12, Math.floor(Math.min(availableWidth / game.size, availableHeight / game.size)));
-  $('board').style.setProperty('--region-columns', game.size);
   $('board').style.setProperty('--grid-size', game.size);
+  $('board').style.setProperty('--region-columns', game.size);
   $('board').style.setProperty('--cell-width', cellSize + 'px');
   $('board').style.setProperty('--cell-height', cellSize + 'px');
 }
@@ -104,7 +104,7 @@ function render() {
   $('home').style.display = 'none'; $('game').style.display = 'block';
   const total = game.size * game.size;
   if (!game.image || !game.size || !Array.isArray(game.board) || game.board.length !== total || !Array.isArray(game.tiles) || game.tiles.length !== total) { showMessage('Puzzle data is incomplete. Refresh and create a new room.'); return; }
-  const mine = game.players.find(p => p.owner === player.owner), region = regionBounds(player.owner), tiles = new Map(game.tiles.map(tile => [tile.id, tile])), correctBoard = game.tiles.map(tile => tile.id);
+  const mine = game.players.find(p => p.id === player.id) || game.players.find(p => p.owner === player.owner) || { correct: 0, total: 1 }, region = regionBounds(player.owner), tiles = new Map(game.tiles.map(tile => [tile.id, tile])), correctBoard = game.tiles.map(tile => tile.id);
   $('player-dot').className = 'player-dot player-' + player.owner; $('region-label').textContent = 'Your region — Player ' + (player.owner + 1); $('region-meta').textContent = mine.correct + '/' + mine.total + ' tiles correct · ' + Math.round(mine.correct / mine.total * 100) + '%';
   $('game-status').textContent = game.done ? 'Complete' : game.players.length < game.playerCount ? 'Waiting for players' : preview ? 'Preview only' : 'Playing'; $('preview').textContent = preview ? 'Exit preview' : 'Preview correct region'; $('debug').checked = debug; if ($('reference').getAttribute('src') !== game.image) { $('reference').onload = () => { if (game && player) render(); }; $('reference').src = game.image; }
   $('region-label').textContent = player.name + ' · Player ' + (player.owner + 1) + ' · ' + regionLabel(player.owner);
@@ -159,11 +159,17 @@ function normalizedImage(file) {
 }
 async function joinRoom(code, name, resume = false) {
   try {
-    const result = await post('/api/games/' + code + '/join', { id:identity, name, lite:true });
+    const key = 'puzzlePlayer:' + code;
+    let playerId = (_isReload || resume) ? sessionStorage.getItem(key) : null;
+    if (!playerId) {
+      playerId = crypto.randomUUID();
+      sessionStorage.setItem(key, playerId);
+    }
+    const result = await post('/api/games/' + code + '/join', { id: playerId, name, lite: true });
     player = result.player; game = result.game; game.image = '/api/games/' + game.code + '/image';
-    try { localStorage['puzzleId:' + game.code] = identity; } catch {}
-    localStorage.puzzleRoom = sessionStorage.puzzleRoom = game.code;
-    localStorage.puzzleName = sessionStorage.puzzleName = player.name;
+    sessionStorage.setItem(key, player.id);
+    sessionStorage.setItem('puzzleName:' + game.code, player.name);
+    sessionStorage.puzzleRoom = game.code;
     try { history.replaceState(null, '', '?room=' + game.code); } catch {}
     selected = null; preview = false; hint = null; inflight = 0; notice = '';
     events && events.close();
@@ -254,17 +260,34 @@ $('leave').onclick = leaveHome; $('play-again').onclick = leaveHome;
 if ($('resume-btn')) {
   $('resume-btn').onclick = () => {
     const code = localStorage.puzzleRoom;
-    const name = localStorage.puzzleName || 'Player';
-    if (code) { const saved = localStorage['puzzleId:' + code]; if (saved) identity = saved; joinRoom(code, name, true); }
+    if (code) {
+      const savedPlayerId = sessionStorage.getItem('puzzlePlayer:' + code);
+      const savedPlayerName = sessionStorage.getItem('puzzleName:' + code);
+      if (savedPlayerId) {
+        joinRoom(code, savedPlayerName || 'Player', true);
+      } else {
+        openSetup('join');
+        if ($('setup-code')) $('setup-code').value = code;
+      }
+    }
   };
 }
 let resizeFrame = 0;
 window.addEventListener('resize', () => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(layoutBoard); });
 const urlParams = new URLSearchParams(window.location.search);
-const targetRoom = urlParams.get('room') || sessionStorage.puzzleRoom || localStorage.puzzleRoom;
-const targetName = sessionStorage.puzzleName || localStorage.puzzleName || 'Player';
+const targetRoom = urlParams.get('room');
 if (targetRoom) {
-  joinRoom(targetRoom, targetName, true);
+  const savedPlayerId = sessionStorage.getItem('puzzlePlayer:' + targetRoom);
+  const savedPlayerName = sessionStorage.getItem('puzzleName:' + targetRoom);
+  if (savedPlayerId) {
+    joinRoom(targetRoom, savedPlayerName || 'Player', true);
+  } else {
+    openSetup('join');
+    if ($('setup-code')) $('setup-code').value = targetRoom;
+  }
+} else if (sessionStorage.puzzleRoom && sessionStorage.getItem('puzzlePlayer:' + sessionStorage.puzzleRoom)) {
+  const room = sessionStorage.puzzleRoom;
+  joinRoom(room, sessionStorage.getItem('puzzleName:' + room) || 'Player', true);
 } else {
   checkResumeBanner();
 }

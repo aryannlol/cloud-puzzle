@@ -156,8 +156,7 @@ function publicGame(game, { includeImage = true, includeTiles = true } = {}) {
   if (includeImage) base.image = game.image;
   return base;
 }
-// SSE broadcasts omit the image (it never changes and can be 1–3 MB per message).
-function broadcast(game) { const message = 'data: ' + JSON.stringify(publicGame(game, { includeImage: false, includeTiles: false })) + '\n\n'; for (const res of (clients.get(game.code) || [])) { try { res.write(message); } catch {} } }
+function broadcast(game) { const message = 'data: ' + JSON.stringify(publicGame(game, { includeImage: false, includeTiles: true })) + '\n\n'; for (const res of (clients.get(game.code) || [])) { try { res.write(message); } catch {} } }
 function body(req) { return new Promise((resolve, reject) => { let data = ''; req.on('data', chunk => { data += chunk; if (data.length > 16 * 1024 * 1024) { req.destroy(); reject(Error('Request too large.')); } }); req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch (e) { reject(e); } }); }); }
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 const fileCache = new Map();

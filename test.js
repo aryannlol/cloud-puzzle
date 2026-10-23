@@ -99,6 +99,7 @@ async function persistenceChecks() {
     assert.equal(solveRes.status, 200);
     const solvedEvent = await firstEvent(await fetch(base + '/api/games/' + code + '/events'));
     assert.equal(solvedEvent.done, true);
+    await multiplayerRegressionTests(base);
     console.log('SQLite test database: ' + path.resolve(testDir, 'test.sqlite'));
   } finally {
     await stopServer(child);
@@ -106,4 +107,92 @@ async function persistenceChecks() {
     fs.rmSync(testDir, { recursive: true, force: true });
   }
 }
-persistenceChecks().then(() => console.log('5x5, 6x6, 9x9 ownership plus SQLite persistence and restart checks passed')).catch(error => { console.error(error); process.exitCode = 1; });
+
+async function multiplayerRegressionTests(base) {
+  const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  // 1. Create a room with two players using separate client sessions.
+  const createRes = await fetch(base + '/api/games', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ players: 2, size: 5, image }) });
+  assert.equal(createRes.status, 201);
+  const { code } = await createRes.json();
+
+  const session1Id = 'session-1-' + Date.now();
+  const session2Id = 'session-2-' + Date.now();
+
+  const join1 = await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session1Id, name: 'Alice', lite: true }) });
+  assert.equal(join1.status, 201);
+  const res1 = await join1.json();
+
+  const join2 = await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session2Id, name: 'Bob', lite: true }) });
+  assert.equal(join2.status, 201);
+  const res2 = await join2.json();
+
+  // 2. Assert that the two sessions receive different player IDs.
+  assert.notEqual(res1.player.id, res2.player.id);
+  assert.equal(res1.player.id, session1Id);
+  assert.equal(res2.player.id, session2Id);
+
+  // 3. Assert that each session maps to the correct owner and region.
+  assert.equal(res1.player.owner, 0);
+  assert.equal(res2.player.owner, 1);
+  assert.equal(res1.game.players[0].total, 15);
+  assert.equal(res2.game.players[1].total, 10);
+
+  // 4. Assert that both clients receive identical authoritative board arrays.
+  assert.deepEqual(res1.game.board, res2.game.board);
+  assert.equal(res1.game.board.length, 25);
+
+  // 5. Verify that both clients receive the same board after a valid swap.
+  const swapRes = await fetch(base + '/api/games/' + code + '/swap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ playerId: session1Id, from: 0, to: 1 }) });
+  assert.equal(swapRes.status, 200);
+  const sseAfterSwap = await firstEvent(await fetch(base + '/api/games/' + code + '/events'));
+  const rejoin1 = await (await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session1Id, lite: true }) })).json();
+  const rejoin2 = await (await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session2Id, lite: true }) })).json();
+  assert.deepEqual(sseAfterSwap.board, rejoin1.game.board);
+  assert.deepEqual(rejoin1.game.board, rejoin2.game.board);
+
+  // 6. Verify that a client cannot swap tiles outside its ownership.
+  const invalidSwap = await fetch(base + '/api/games/' + code + '/swap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ playerId: session1Id, from: 0, to: 3 }) });
+  assert.equal(invalidSwap.status, 400);
+  const invalidSwap2 = await fetch(base + '/api/games/' + code + '/swap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ playerId: session2Id, from: 3, to: 0 }) });
+  assert.equal(invalidSwap2.status, 400);
+
+  // 7. Verify that reconnecting a player preserves identity.
+  const reconnectP1 = await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session1Id, lite: true }) });
+  assert.equal(reconnectP1.status, 200);
+  const rec1 = await reconnectP1.json();
+  assert.equal(rec1.player.id, session1Id);
+  assert.equal(rec1.player.owner, 0);
+
+  const reconnectP2 = await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session2Id, lite: true }) });
+  assert.equal(reconnectP2.status, 200);
+  const rec2 = await reconnectP2.json();
+  assert.equal(rec2.player.id, session2Id);
+  assert.equal(rec2.player.owner, 1);
+
+  // 8. Verify that a third and fourth player are assigned correctly.
+  const create4 = await fetch(base + '/api/games', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ players: 4, size: 6, image }) });
+  assert.equal(create4.status, 201);
+  const code4 = (await create4.json()).code;
+  const p1_4 = await (await fetch(base + '/api/games/' + code4 + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p1-4', name: 'P1', lite: true }) })).json();
+  const p2_4 = await (await fetch(base + '/api/games/' + code4 + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p2-4', name: 'P2', lite: true }) })).json();
+  const p3_4 = await (await fetch(base + '/api/games/' + code4 + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p3-4', name: 'P3', lite: true }) })).json();
+  const p4_4 = await (await fetch(base + '/api/games/' + code4 + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p4-4', name: 'P4', lite: true }) })).json();
+
+  assert.equal(p1_4.player.owner, 0);
+  assert.equal(p2_4.player.owner, 1);
+  assert.equal(p3_4.player.owner, 2);
+  assert.equal(p4_4.player.owner, 3);
+  assert.equal(new Set([p1_4.player.id, p2_4.player.id, p3_4.player.id, p4_4.player.id]).size, 4);
+
+  // 9. Verify that browser layout changes / client side queries do not mutate game state.
+  const boardBeforeQuery = p4_4.game.board.slice();
+  await fetch(base + '/api/games/' + code4 + '/image');
+  await fetch(base + '/api/games/' + code4 + '/events');
+  const boardAfterQuery = (await (await fetch(base + '/api/games/' + code4 + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p1-4', lite: true }) })).json()).game.board;
+  assert.deepEqual(boardBeforeQuery, boardAfterQuery);
+}
+
+persistenceChecks()
+  .then(() => console.log('All tests passed: 5x5, 6x6, 9x9 ownership, SQLite persistence, restart, and 9 multiplayer regression checks.'))
+  .catch(error => { console.error(error); process.exitCode = 1; });
