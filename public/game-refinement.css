@@ -93,3 +93,12 @@ body:has(#completion:not([hidden])) .completion {
   border-radius: 3px;
   pointer-events: none;
 }
+
+/* Perf + geometry fixes (loaded last) */
+#board { box-sizing: content-box; gap: 0; max-width: none; contain: layout paint; }
+.cell { box-shadow: inset 0 0 0 .5px rgba(255,255,255,.35); transition: none; will-change: auto; }
+.cell:hover { filter: none; }
+@media (hover: hover) { .cell:hover { filter: brightness(1.06); } }
+.cell.hint { outline: 3px dashed var(--blue); outline-offset: -3px; z-index: 4; animation: hint-pulse 1.2s ease-in-out 3; }
+@keyframes hint-pulse { 50% { filter: brightness(1.2); } }
+@media (prefers-reduced-motion: reduce) { .cell.hint { animation: none; } }

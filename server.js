@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { DatabaseSync } = require('node:sqlite');
 
 const games = new Map(), clients = new Map(), publicDir = path.join(__dirname, 'public'), dataDir = path.join(__dirname, 'data');
@@ -10,6 +11,7 @@ const dbPath = configuredDbPath ? (path.isAbsolute(configuredDbPath) ? configure
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec('PRAGMA foreign_keys = ON');
+try { db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;'); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS games (
   code TEXT PRIMARY KEY,
   image TEXT NOT NULL,
@@ -40,15 +42,23 @@ function makeTiles(playerCount, size = 9) {
   for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) tiles.push({ id: row + '-' + col, row, col, owner: owners[col] });
   return tiles;
 }
+const PREPLACED_RATIO = 0.2; // share of each player's tiles that start in the right place (early win, lower stress)
+function shuffleInPlace(a) { for (let i = a.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function derange(a) { // Sattolo: one big cycle, so no element stays put
+  for (let i = a.length - 1; i > 0; i--) { const j = crypto.randomInt(i); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
 function scramble(tiles, size = Math.sqrt(tiles.length)) {
   const board = tiles.map(t => t.id);
-  const ownerCount = Math.max(...tiles.map(t => t.owner)) + 1, byId = new Map(tiles.map(t => [t.id, t]));
+  const ownerCount = Math.max(...tiles.map(t => t.owner)) + 1, owners = ownership(ownerCount, size);
   for (let owner = 0; owner < ownerCount; owner++) {
-    const positions = board.map((tileId, i) => ownership(ownerCount, size)[i % size] === owner ? i : -1).filter(i => i >= 0);
-    const original = positions.map(i => board[i]);
-    for (let i = original.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [original[i], original[j]] = [original[j], original[i]]; }
-    positions.forEach((position, i) => { board[position] = original[i]; });
-    if (positions.length > 1 && positions.every((position) => byId.get(board[position]).row === Math.floor(position / size) && byId.get(board[position]).col === position % size)) [board[positions[0]], board[positions[1]]] = [board[positions[1]], board[positions[0]]];
+    const positions = [];
+    for (let i = 0; i < board.length; i++) if (owners[i % size] === owner) positions.push(i);
+    if (positions.length < 2) continue;
+    const keep = Math.min(Math.floor(positions.length * PREPLACED_RATIO), positions.length - 2);
+    const moving = shuffleInPlace(positions.slice()).slice(keep);   // positions that will be scrambled
+    const tilesHere = derange(moving.map(p => board[p]));
+    moving.forEach((p, i) => { board[p] = tilesHere[i]; });
   }
   return board;
 }
@@ -61,9 +71,27 @@ function progress(board, tiles, owner, size = Math.sqrt(board.length)) {
   const byId = new Map(tiles.map(t => [t.id, t]));
   return board.reduce((count, tileId, position) => { const tile = byId.get(tileId); return count + (tile && tile.owner === owner && tile.row === Math.floor(position / size) && tile.col === position % size ? 1 : 0); }, 0);
 }
+// Optimal number of swaps needed = misplaced tiles - number of cycles of the permutation.
+function minSwaps(board, owner, size, tiles) {
+  const where = new Map(); board.forEach((id, pos) => where.set(id, pos));
+  const mine = []; for (let p = 0; p < board.length; p++) if (tiles[p].owner === owner) mine.push(p);
+  const seen = new Set(); let swaps = 0;
+  for (const p of mine) {
+    if (seen.has(p)) continue;
+    let len = 0, cur = p;
+    while (!seen.has(cur)) { seen.add(cur); cur = where.get(tiles[cur].id); len++; }
+    swaps += len - 1;
+  }
+  return swaps;
+}
 function complete(game) {
   const byId = new Map(game.tiles.map(t => [t.id, t]));
   return game.board.every((tileId, position) => { const tile = byId.get(tileId); return tile && tile.row === Math.floor(position / game.size) && tile.col === position % game.size; });
+}
+let moveStmt;
+function persistMove(game) {
+  moveStmt = moveStmt || db.prepare('UPDATE games SET board_json = ?, done = ? WHERE code = ?');
+  moveStmt.run(JSON.stringify(game.board), game.done ? 1 : 0, game.code);
 }
 function persistGame(game) {
   const gameStatement = db.prepare(`INSERT INTO games (code, image, size, player_count, board_json, tiles_json, created_at, done)
@@ -95,14 +123,15 @@ function loadGames() {
     }
   }
 }
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const IDLE_MINUTES = Number(process.env.ROOM_IDLE_MINUTES) || 120;
+const IDLE_TIMEOUT_MS = IDLE_MINUTES * 60 * 1000;
 function deleteGame(code) {
   const game = games.get(code);
   if (!game) return;
   const list = clients.get(code) || [];
   for (const client of list) {
     try {
-      client.write('data: ' + JSON.stringify({ expired: true, message: 'Room expired due to 5 minutes of inactivity.' }) + '\n\n');
+      client.write('data: ' + JSON.stringify({ expired: true, message: 'Room closed after ' + IDLE_MINUTES + ' minutes of inactivity.' }) + '\n\n');
       client.end();
     } catch {}
   }
@@ -113,29 +142,49 @@ function deleteGame(code) {
 setInterval(() => {
   const now = Date.now();
   for (const [code, game] of games.entries()) {
+    if ((clients.get(code) || []).length) game.lastActiveAt = now; // someone is connected: room is alive
     if (now - (game.lastActiveAt || 0) > IDLE_TIMEOUT_MS) {
       deleteGame(code);
     }
   }
 }, 15000).unref();
+setInterval(() => { for (const list of clients.values()) for (const res of list) { try { res.write(': ping\n\n'); } catch {} } }, 20000).unref();
 function closePersistence() { db.close(); }
-function publicGame(game, { includeImage = true } = {}) {
-  const base = { code: game.code, size: game.size, playerCount: game.playerCount, board: game.board, tiles: game.tiles, players: game.players.map(p => ({ id: p.id, name: p.name, owner: p.owner, total: game.tiles.filter(t => t.owner === p.owner).length, correct: progress(game.board, game.tiles, p.owner, game.size) })), done: complete(game) };
+function publicGame(game, { includeImage = true, includeTiles = true } = {}) {
+  const base = { code: game.code, size: game.size, playerCount: game.playerCount, board: game.board, players: game.players.map(p => ({ id: p.id, name: p.name, owner: p.owner, total: game.tiles.filter(t => t.owner === p.owner).length, correct: progress(game.board, game.tiles, p.owner, game.size) })), done: complete(game) };
+  if (includeTiles) base.tiles = game.tiles;
   if (includeImage) base.image = game.image;
   return base;
 }
 // SSE broadcasts omit the image (it never changes and can be 1–3 MB per message).
-function broadcast(game) { const message = 'data: ' + JSON.stringify(publicGame(game, { includeImage: false })) + '\n\n'; (clients.get(game.code) || []).forEach(res => res.write(message)); }
+function broadcast(game) { const message = 'data: ' + JSON.stringify(publicGame(game, { includeImage: false, includeTiles: false })) + '\n\n'; for (const res of (clients.get(game.code) || [])) { try { res.write(message); } catch {} } }
 function body(req) { return new Promise((resolve, reject) => { let data = ''; req.on('data', chunk => { data += chunk; if (data.length > 16 * 1024 * 1024) { req.destroy(); reject(Error('Request too large.')); } }); req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch (e) { reject(e); } }); }); }
-function sendFile(res, file) { const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : 'text/css'; res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }); fs.createReadStream(file).pipe(res); }
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+const fileCache = new Map();
+function sendFile(req, res, file) {
+  let st; try { st = fs.statSync(file); } catch { return json(res, 404, { error: 'Not found' }); }
+  if (!st.isFile()) return json(res, 404, { error: 'Not found' });
+  const etag = '"' + st.size.toString(16) + '-' + Math.floor(st.mtimeMs).toString(16) + '"';
+  const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', ETag: etag, 'Cache-Control': 'no-cache', Vary: 'Accept-Encoding' };
+  if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+  let entry = fileCache.get(file);
+  if (!entry || entry.etag !== etag) { const raw = fs.readFileSync(file); entry = { etag, raw, gz: zlib.gzipSync(raw, { level: 9 }) }; fileCache.set(file, entry); }
+  const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+  if (gzip) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(200, headers); res.end(gzip ? entry.gz : entry.raw);
+}
+function imageOf(game) {
+  if (!game.imageBuf) { const m = /^data:(image\/[a-z0-9.+-]+);base64,(.*)$/s.exec(game.image); game.imageBuf = m ? { type: m[1], data: Buffer.from(m[2], 'base64') } : null; }
+  return game.imageBuf;
+}
 loadGames();
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://' + req.headers.host), parts = url.pathname.split('/').filter(Boolean);
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok', uptime: Math.floor(process.uptime()), rooms: games.size });
-    if (req.method === 'GET' && url.pathname === '/') return sendFile(res, path.join(publicDir, 'index.html'));
-    if (req.method === 'GET' && url.pathname.startsWith('/')) { const file = path.join(publicDir, path.basename(url.pathname)); if (fs.existsSync(file)) return sendFile(res, file); }
+    if (req.method === 'GET' && url.pathname === '/') return sendFile(req, res, path.join(publicDir, 'index.html'));
+    if (req.method === 'GET' && url.pathname.startsWith('/')) { const file = path.join(publicDir, path.basename(url.pathname)); if (fs.existsSync(file)) return sendFile(req, res, file); }
     if (req.method === 'POST' && url.pathname === '/api/games') {
       const data = await body(req), count = Number(data.players) || 2, size = Number(data.size) || 9;
       const image = String(data.image || '');
@@ -149,32 +198,39 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] !== 'api' || parts[1] !== 'games' || !games.has(parts[2])) return json(res, 404, { error: 'Not found' });
     const game = games.get(parts[2]);
     game.lastActiveAt = Date.now();
+    if (req.method === 'GET' && parts[3] === 'image') {
+      const img = imageOf(game); if (!img) return json(res, 404, { error: 'Not found' });
+      res.writeHead(200, { 'Content-Type': img.type, 'Content-Length': img.data.length, 'Cache-Control': 'private, max-age=31536000, immutable' }); return res.end(img.data);
+    }
     if (req.method === 'GET' && parts[3] === 'events') {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-      const list = clients.get(game.code) || []; list.push(res); clients.set(game.code, list); res.write('data: ' + JSON.stringify(publicGame(game)) + '\n\n');
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+      res.write('retry: 2000\n\n');
+      const list = clients.get(game.code) || []; list.push(res); clients.set(game.code, list); res.write('data: ' + JSON.stringify(publicGame(game, { includeImage: url.searchParams.get('lite') !== '1' })) + '\n\n');
       req.on('close', () => clients.set(game.code, (clients.get(game.code) || []).filter(x => x !== res))); return;
     }
     if (req.method === 'POST' && parts[3] === 'join') {
-      const data = await body(req), existing = game.players.find(p => p.id === data.id);
-      if (existing) return json(res, 200, { player: existing, game: publicGame(game) });
+      const data = await body(req); if (typeof data.id !== 'string' || !data.id || data.id.length > 64) delete data.id;
+      const lite = data.lite === true, existing = game.players.find(p => p.id === data.id);
+      if (existing) return json(res, 200, { player: existing, game: publicGame(game, { includeImage: !lite }) });
       if (game.players.length >= game.playerCount) return json(res, 400, { error: 'Game is full.' });
       const player = { id: data.id || id(), name: String(data.name || 'Player ' + (game.players.length + 1)).slice(0, 24), owner: game.players.length };
       game.players.push(player);
       try { persistGame(game); } catch { game.players.pop(); return json(res, 500, { error: 'The player could not be saved.' }); }
-      broadcast(game); return json(res, 201, { player, game: publicGame(game) });
+      broadcast(game); return json(res, 201, { player, game: publicGame(game, { includeImage: !lite }) });
     }
     if (req.method === 'POST' && parts[3] === 'swap') {
       const data = await body(req), player = game.players.find(p => p.id === data.playerId);
       const from = Number(data.from), to = Number(data.to);
       if (!player || !swap(game.board, game.tiles, game.playerCount, player.owner, from, to, game.size)) return json(res, 400, { error: 'Choose two positions inside your region.' });
       game.done = complete(game);
-      try { persistGame(game); } catch { [game.board[from], game.board[to]] = [game.board[to], game.board[from]]; game.done = complete(game); return json(res, 500, { error: 'The move could not be saved.' }); }
+      try { persistMove(game); } catch { [game.board[from], game.board[to]] = [game.board[to], game.board[from]]; game.done = complete(game); return json(res, 500, { error: 'The move could not be saved.' }); }
       broadcast(game); return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && parts[3] === 'solve') {
+      if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SOLVE !== '1') return json(res, 403, { error: 'Solve is disabled.' });
       game.board = game.tiles.map(t => t.id);
       game.done = true;
-      try { persistGame(game); } catch { return json(res, 500, { error: 'The solve could not be saved.' }); }
+      try { persistMove(game); } catch { return json(res, 500, { error: 'The solve could not be saved.' }); }
       broadcast(game); return json(res, 200, { ok: true });
     }
     json(res, 405, { error: 'Method not allowed' });
@@ -206,4 +262,4 @@ if (require.main === module) {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
-module.exports = { ownership, makeTiles, scramble, swap, progress, persistGame, loadGames, closePersistence, deleteGame, games, server };
+module.exports = { minSwaps, ownership, makeTiles, scramble, swap, progress, persistGame, loadGames, closePersistence, deleteGame, games, server };

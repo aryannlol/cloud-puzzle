@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <script>(function(){var t=localStorage.cloudPuzzleTheme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t}())</script>
   <title>Cloud Puzzle</title>
-  <link rel="stylesheet" href="style.css?v=7">
-  <link rel="stylesheet" href="landing.css?v=7">
-  <link rel="stylesheet" href="game.css?v=7">
-  <link rel="stylesheet" href="game-refinement.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="landing.css?v=10">
+  <link rel="stylesheet" href="game.css?v=10">
+  <link rel="stylesheet" href="game-refinement.css?v=10">
 </head>
 <body>
   <header class="site-header">
@@ -57,6 +57,7 @@
 
         <div class="topbar-right">
           <div id="game-message" class="game-topbar-notice" role="status"></div>
+          <button id="hint" class="compact-tool-btn" type="button" aria-label="Show a helpful move" title="Show the best next swap"><span>Hint</span></button>
           <button id="preview" class="compact-tool-btn" type="button" aria-label="Preview correct region" title="Preview original image">
             <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>
             <span>Preview</span>
@@ -135,6 +136,6 @@
       </section>
     </section>
   </main>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
