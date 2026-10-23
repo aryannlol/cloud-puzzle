@@ -200,6 +200,12 @@ body.in-game main {
   color: var(--red);
 }
 
+.menu-action.auto-solve-running {
+  background: var(--coral) !important;
+  color: #fff !important;
+  font-weight: 800;
+}
+
 .menu-sep {
   border: 0;
   border-top: 1px solid var(--line);
@@ -233,6 +239,8 @@ body.in-game main {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .board-title {
@@ -240,6 +248,9 @@ body.in-game main {
   font-size: 16px;
   font-weight: 800;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .board-meta {
@@ -412,6 +423,10 @@ body.in-game main {
 
 .player-name {
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
 }
 
 .progress-track {
@@ -478,8 +493,8 @@ body.in-game main {
   padding: 12px;
 }
 
-/* Responsive Overrides */
-@media (max-width: 768px) {
+/* Responsive Layout */
+@media (max-width: 860px) {
   .game-layout {
     display: flex;
     flex-direction: column;
@@ -489,29 +504,88 @@ body.in-game main {
   .utility-sidebar {
     width: 100%;
     display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: 12px;
+    grid-template-columns: minmax(130px, 160px) 1fr;
+    gap: 14px;
+    align-items: start;
   }
 
   .thumb-btn img {
-    max-height: 100px;
-  }
-
-  .brand-name {
-    display: none;
+    max-height: 120px;
   }
 }
 
 @media (max-width: 480px) {
+  body.in-game main {
+    padding: 6px 10px 20px;
+  }
+
+  .game-topbar {
+    padding: 4px 0 8px;
+    gap: 6px;
+  }
+
+  .topbar-left, .topbar-right {
+    gap: 6px;
+  }
+
+  .room-badge {
+    padding: 2px 7px;
+    font-size: 11px;
+    gap: 5px;
+  }
+
+  .compact-tool-btn {
+    padding: 6px 8px;
+    font-size: 12px;
+    min-height: 36px;
+  }
+
+  .compact-menu .menu-btn {
+    width: 36px;
+    height: 36px;
+  }
+
   .utility-sidebar {
     grid-template-columns: 1fr;
   }
 
   .board-title {
-    font-size: 14px;
+    font-size: 13px;
+    max-width: 170px;
   }
 
   .board-meta {
-    font-size: 12px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+}
+
+/* Mobile landscape / short viewports */
+@media (orientation: landscape) and (max-height: 540px) {
+  body.in-game main {
+    padding: 4px 12px 14px;
+  }
+
+  .game-topbar {
+    margin-bottom: 6px;
+    padding: 2px 0 6px;
+  }
+
+  .game-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .utility-sidebar {
+    width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .thumb-btn img {
+    max-height: 90px;
   }
 }

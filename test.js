@@ -191,8 +191,120 @@ async function multiplayerRegressionTests(base) {
   await fetch(base + '/api/games/' + code4 + '/events');
   const boardAfterQuery = (await (await fetch(base + '/api/games/' + code4 + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p1-4', lite: true }) })).json()).game.board;
   assert.deepEqual(boardBeforeQuery, boardAfterQuery);
+  await autoSolveAndEdgeCaseTests(base);
 }
 
+function themeLogicUnitTests() {
+  function getEffectiveTheme(preference, systemDark) {
+    if (preference === 'light' || preference === 'dark') return preference;
+    return systemDark ? 'dark' : 'light';
+  }
+
+  assert.equal(getEffectiveTheme('system', true), 'dark');
+  assert.equal(getEffectiveTheme('system', false), 'light');
+  assert.equal(getEffectiveTheme('light', true), 'light');
+  assert.equal(getEffectiveTheme('light', false), 'light');
+  assert.equal(getEffectiveTheme('dark', false), 'dark');
+  assert.equal(getEffectiveTheme('dark', true), 'dark');
+
+  function getStoredTheme(mockStorage) {
+    try {
+      const val = mockStorage.getItem('cloudPuzzleTheme');
+      if (val === 'light' || val === 'dark' || val === 'system') return val;
+    } catch {}
+    return 'system';
+  }
+
+  assert.equal(getStoredTheme({ getItem: () => null }), 'system');
+  assert.equal(getStoredTheme({ getItem: () => 'invalid-theme' }), 'system');
+  assert.equal(getStoredTheme({ getItem: () => 'dark' }), 'dark');
+  assert.equal(getStoredTheme({ getItem: () => 'light' }), 'light');
+  assert.equal(getStoredTheme({ getItem: () => 'system' }), 'system');
+  assert.equal(getStoredTheme({ getItem: () => { throw new Error('QuotaExceeded / SecurityError'); } }), 'system');
+}
+
+async function autoSolveAndEdgeCaseTests(base) {
+  const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const create = await (await fetch(base + '/api/games', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ players: 2, size: 5, image }) })).json();
+  const code = create.code;
+
+  const longName1 = 'Alice With An Extremely Long Name That Could Cause Overflow '.repeat(2).trim();
+  const join1 = await (await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p1-autosolve', name: longName1, lite: true }) })).json();
+  const join2 = await (await fetch(base + '/api/games/' + code + '/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'p2-other', name: 'Bob', lite: true }) })).json();
+
+  assert.equal(join1.player.name, longName1.slice(0, 24));
+  assert.equal(join1.player.owner, 0);
+  assert.equal(join2.player.owner, 1);
+
+  function inPlayerRegion(pos, owner, size, count) {
+    const baseCols = Math.floor(size / count);
+    const extra = size % count;
+    const start = owner * baseCols + Math.min(owner, extra);
+    const end = start + baseCols + (owner < extra ? 1 : 0);
+    const col = pos % size;
+    return col >= start && col < end;
+  }
+
+  let currentBoard = join1.game.board.slice();
+
+  function findHint(board, size, owner, count) {
+    const baseCols = Math.floor(size / count);
+    const extra = size % count;
+    const start = owner * baseCols + Math.min(owner, extra);
+    const end = start + baseCols + (owner < extra ? 1 : 0);
+    const want = p => Math.floor(p / size) + '-' + (p % size);
+    for (let row = 0; row < size; row++) {
+      for (let col = start; col < end; col++) {
+        const p = row * size + col;
+        if (board[p] === want(p)) continue;
+        const q = board.indexOf(want(p));
+        return [p, q];
+      }
+    }
+    return null;
+  }
+
+  let steps = 0;
+  while (steps < 20) {
+    const hint = findHint(currentBoard, 5, 0, 2);
+    if (!hint) break;
+    assert.equal(inPlayerRegion(hint[0], 0, 5, 2), true);
+    assert.equal(inPlayerRegion(hint[1], 0, 5, 2), true);
+
+    const swapRes = await fetch(base + '/api/games/' + code + '/swap', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ playerId: 'p1-autosolve', from: hint[0], to: hint[1] })
+    });
+    assert.equal(swapRes.status, 200);
+    const sse = await firstEvent(await fetch(base + '/api/games/' + code + '/events'));
+    currentBoard = sse.board.slice();
+    steps++;
+  }
+
+  const p2OriginalTiles = join2.game.tiles.filter(t => t.owner === 1).map(t => t.id);
+  for (let row = 0; row < 5; row++) {
+    for (let col = 3; col < 5; col++) {
+      const pos = row * 5 + col;
+      assert.equal(p2OriginalTiles.includes(currentBoard[pos]), true);
+    }
+  }
+
+  const unauthorizedSwap = await fetch(base + '/api/games/' + code + '/swap', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ playerId: 'p1-autosolve', from: 0, to: 3 })
+  });
+  assert.equal(unauthorizedSwap.status, 400);
+
+  const devSolve = await fetch(base + '/api/games/' + code + '/solve', { method: 'POST' });
+  assert.equal(devSolve.status, 200);
+  const finalState = await firstEvent(await fetch(base + '/api/games/' + code + '/events'));
+  assert.equal(finalState.done, true);
+}
+
+themeLogicUnitTests();
 persistenceChecks()
-  .then(() => console.log('All tests passed: 5x5, 6x6, 9x9 ownership, SQLite persistence, restart, and 9 multiplayer regression checks.'))
+  .then(() => console.log('All tests passed: Theme resolution, 5x5/6x6/9x9 geometry, SQLite persistence, restart, 9 multiplayer regression checks, and Demo Auto-Solve ownership isolation.'))
   .catch(error => { console.error(error); process.exitCode = 1; });

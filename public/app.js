@@ -3,14 +3,73 @@ let game, player, events, selected = null, preview = false, debug = false, infli
 // Unique per-tab identifier: preserved across reloads of this tab, fresh for new tabs/windows.
 const _navType = performance.getEntriesByType('navigation')[0]?.type;
 const _isReload = _navType === 'reload' || _navType === 'back_forward';
-const themeNames = { light:'Light', dark:'Dark', system:'System' };
+const themeNames = { light: 'Light', dark: 'Dark', system: 'System' };
+
+function getStoredTheme() {
+  try {
+    const val = localStorage.getItem('cloudPuzzleTheme');
+    if (val === 'light' || val === 'dark' || val === 'system') return val;
+  } catch {}
+  return 'system';
+}
+
+function setStoredTheme(theme) {
+  try {
+    localStorage.setItem('cloudPuzzleTheme', theme);
+  } catch {}
+}
+
+function getEffectiveTheme(preference) {
+  if (preference === 'light' || preference === 'dark') return preference;
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+}
+
+function updateThemeUI(pref, effective) {
+  const label = 'Theme: ' + (themeNames[pref] || 'System');
+  const aria = 'Current theme: ' + (themeNames[pref] || 'System') + ' (' + effective + '). Click to cycle theme.';
+  if ($('theme')) {
+    $('theme').textContent = label;
+    $('theme').setAttribute('aria-label', aria);
+  }
+  if ($('theme-in-game')) {
+    $('theme-in-game').textContent = label;
+    $('theme-in-game').setAttribute('aria-label', aria);
+  }
+}
+
+function applyTheme(choice) {
+  const pref = (choice === 'light' || choice === 'dark' || choice === 'system') ? choice : 'system';
+  setStoredTheme(pref);
+  const effective = getEffectiveTheme(pref);
+  document.documentElement.dataset.theme = effective;
+  updateThemeUI(pref, effective);
+}
+
+function cycleTheme() {
+  const current = getStoredTheme();
+  const next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
+  applyTheme(next);
+}
+
+if (window.matchMedia) {
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => {
+      if (getStoredTheme() === 'system') {
+        const effective = mq.matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = effective;
+        updateThemeUI('system', effective);
+      }
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onSystemThemeChange);
+    else if (mq.addListener) mq.addListener(onSystemThemeChange);
+  } catch {}
+}
 
 function post(url, data) { return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(async response => { const result = await response.json(); if (!response.ok) throw Error(result.error); return result; }); }
 function escapeHTML(text) { return String(text).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function showMessage(text, error = true) { notice = text; $('game-message').textContent = text; $('game-message').style.color = error ? 'var(--coral)' : 'var(--mint)'; }
 function homeMessage(id, text) { $(id).textContent = text; }
-function applyTheme(choice) { const actual = choice === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = actual; localStorage.cloudPuzzleTheme = choice; if ($('theme')) $('theme').textContent = 'Theme: ' + themeNames[choice]; if ($('theme-in-game')) $('theme-in-game').textContent = 'Theme: ' + themeNames[choice]; }
-function cycleTheme() { const current = localStorage.cloudPuzzleTheme || 'system', next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system'; applyTheme(next); }
 function tileStyle(tile) {
   const last = Math.max(1, game.size - 1);
   return 'background-image:url(' + game.image + ');background-size:' + game.size * 100 + '% ' + game.size * 100 + '%;background-position:' + tile.col / last * 100 + '% ' + tile.row / last * 100 + '%';
@@ -39,6 +98,7 @@ function renderProgress() {
 function renderCompletion() {
   const done = game.done; $('completion').hidden = !done; $('active-content').hidden = done;
   if (!done) return;
+  stopAutoSolve();
   $('completed-image').src = game.image;
   $('final-players').innerHTML = game.players.map(p => '<div class="player player-' + p.owner + '"><div class="player-name">' + escapeHTML(p.name) + '</div><small>' + p.correct + '/' + p.total + ' tiles solved</small></div>').join('');
 }
@@ -61,15 +121,90 @@ function applyServerState(data) {
 }
 function layoutBoard() {
   if (!game || !player || !game.size) return;
-  const mobile = window.innerWidth <= 768, boardTop = $('board').getBoundingClientRect().top || 75;
-  const availableHeight = mobile ? Number.POSITIVE_INFINITY : Math.max(120, window.innerHeight - boardTop - 24);
-  const availableWidth = Math.max(120, $('board').parentElement.clientWidth - 4);
-  // Full NxN square board: cells are always square, sized to fit both axes
-  const cellSize = Math.max(12, Math.floor(Math.min(availableWidth / game.size, availableHeight / game.size)));
-  $('board').style.setProperty('--grid-size', game.size);
-  $('board').style.setProperty('--region-columns', game.size);
-  $('board').style.setProperty('--cell-width', cellSize + 'px');
-  $('board').style.setProperty('--cell-height', cellSize + 'px');
+  const boardEl = $('board');
+  if (!boardEl) return;
+  const boardTop = boardEl.getBoundingClientRect().top || 70;
+  const isLandscape = window.innerWidth > window.innerHeight;
+  const parentWidth = boardEl.parentElement ? boardEl.parentElement.clientWidth : window.innerWidth;
+  const availableWidth = Math.max(120, parentWidth - 8);
+  const bottomMargin = isLandscape ? 20 : 70;
+  const availableHeight = Math.max(120, window.innerHeight - boardTop - bottomMargin);
+  const maxBoardDim = Math.min(availableWidth, availableHeight);
+  const cellSize = Math.max(12, Math.floor(maxBoardDim / game.size));
+  boardEl.style.setProperty('--grid-size', game.size);
+  boardEl.style.setProperty('--region-columns', game.size);
+  boardEl.style.setProperty('--cell-width', cellSize + 'px');
+  boardEl.style.setProperty('--cell-height', cellSize + 'px');
+}
+
+let autoSolveTimer = null;
+let autoSolveActive = false;
+
+function updateAutoSolveUI() {
+  const btn = $('solve-btn');
+  if (!btn) return;
+  if (autoSolveActive) {
+    btn.textContent = '⏹ Stop Auto Solve';
+    btn.setAttribute('aria-label', 'Stop running Demo Auto Solve');
+    btn.classList.add('auto-solve-running');
+  } else {
+    btn.textContent = 'Demo Auto Solve';
+    btn.setAttribute('aria-label', 'Start step-by-step Demo Auto Solve for your region');
+    btn.classList.remove('auto-solve-running');
+  }
+}
+
+function stopAutoSolve(reason) {
+  if (autoSolveTimer) {
+    clearTimeout(autoSolveTimer);
+    autoSolveTimer = null;
+  }
+  if (autoSolveActive) {
+    autoSolveActive = false;
+    updateAutoSolveUI();
+    if (reason) showMessage(reason, false);
+  }
+}
+
+function stepAutoSolve() {
+  if (!autoSolveActive) return;
+  if (!game || game.done) {
+    stopAutoSolve('Demo Auto Solve completed: puzzle solved!');
+    return;
+  }
+  const mine = game.players.find(p => p.id === player.id) || game.players.find(p => p.owner === player.owner);
+  if (mine && mine.correct >= mine.total) {
+    stopAutoSolve('Your assigned region is fully solved.');
+    return;
+  }
+  if (inflight > 0) {
+    autoSolveTimer = setTimeout(stepAutoSolve, 200);
+    return;
+  }
+  const move = findHint();
+  if (!move) {
+    stopAutoSolve('Your assigned region is fully solved.');
+    return;
+  }
+  doSwap(move[0], move[1]);
+  autoSolveTimer = setTimeout(stepAutoSolve, 380);
+}
+
+function startAutoSolve() {
+  if (autoSolveActive) return;
+  if (!game || !player) return showMessage('Join a room first.');
+  if (game.done) return showMessage('Game is already complete.');
+  const confirmed = window.confirm('Start Demo Auto Solve?\nThis will automatically solve your assigned region step-by-step for demonstration.');
+  if (!confirmed) return;
+  autoSolveActive = true;
+  updateAutoSolveUI();
+  showMessage('Demo Auto Solve running… Click "Stop Auto Solve" or anywhere on the board to cancel.', false);
+  stepAutoSolve();
+}
+
+function toggleAutoSolve() {
+  if (autoSolveActive) stopAutoSolve('Demo Auto Solve stopped.');
+  else startAutoSolve();
 }
 function findHint() { // optimal move: always put a tile where it belongs; prefer swaps that fix two tiles at once
   const region = regionBounds(player.owner), want = p => Math.floor(p / game.size) + '-' + p % game.size;
@@ -92,6 +227,9 @@ function doSwap(a, b) {
     .finally(() => { inflight--; render(); });
 }
 function onBoardClick(event) {
+  if (autoSolveActive) {
+    stopAutoSolve('Demo Auto Solve stopped by user interaction.');
+  }
   const cell = event.target.closest('.cell'); if (!cell || preview || !game || game.done) return;
   const position = Number(cell.dataset.pos); if (!inMyRegion(position)) return; hint = null;
   if (selected === null) { selected = position; render(); }
@@ -171,11 +309,12 @@ async function joinRoom(code, name, resume = false) {
     sessionStorage.setItem('puzzleName:' + game.code, player.name);
     sessionStorage.puzzleRoom = game.code;
     try { history.replaceState(null, '', '?room=' + game.code); } catch {}
+    stopAutoSolve();
     selected = null; preview = false; hint = null; inflight = 0; notice = '';
     events && events.close();
     events = new EventSource('/api/games/' + code + '/events?lite=1');
     events.onopen = () => { $('connection-status').textContent = 'Connected'; $('connection').classList.remove('offline'); };
-    events.onerror = () => { $('connection-status').textContent = 'Reconnecting…'; $('connection').classList.add('offline'); };
+    events.onerror = () => { stopAutoSolve('Connection dropped. Demo Auto Solve paused.'); $('connection-status').textContent = 'Reconnecting…'; $('connection').classList.add('offline'); };
     events.onmessage = event => {
       const data = JSON.parse(event.data);
       if (data.expired) {
@@ -201,7 +340,11 @@ async function joinRoom(code, name, resume = false) {
   }
 }
 
-if ($('theme')) $('theme').onclick = cycleTheme; applyTheme(localStorage.cloudPuzzleTheme || 'system'); updatePlayerOptions(); $('size').onchange = updatePlayerOptions;
+if ($('theme')) $('theme').onclick = cycleTheme;
+if ($('theme-in-game')) $('theme-in-game').onclick = cycleTheme;
+applyTheme(getStoredTheme());
+updatePlayerOptions();
+$('size').onchange = updatePlayerOptions;
 $('create-entry').onclick = () => openSetup('create');
 $('join-entry').onclick = () => openSetup('join');
 $('setup-cancel').onclick = () => $('setup-dialog').close();
@@ -226,9 +369,15 @@ $('join-form').onsubmit = async event => { event.preventDefault(); homeMessage('
 $('board').onclick = onBoardClick;
 if ($('hint')) $('hint').onclick = () => { if (!game || game.done || preview) return; hint = findHint(); selected = null; render(); };
 $('preview').onclick = () => { preview = !preview; selected = null; render(); }; $('debug').onchange = event => { debug = event.target.checked; render(); };
-const triggerSolve = async () => { if (!game || game.done) return; try { await post('/api/games/' + game.code + '/solve', {}); } catch (e) { showMessage(e.message); } };
-$('solve-btn').onclick = triggerSolve;
-window.addEventListener('keydown', e => { if (e.shiftKey && (e.key === 'S' || e.key === 's')) triggerSolve(); });
+$('solve-btn').onclick = toggleAutoSolve;
+window.addEventListener('keydown', e => {
+  if (e.shiftKey && (e.key === 'S' || e.key === 's')) {
+    if (!game || game.done) return;
+    if (window.confirm('Developer instant solve: Solve entire board on server?')) {
+      post('/api/games/' + game.code + '/solve', {}).catch(err => showMessage(err.message));
+    }
+  }
+});
 $('reference').onerror = () => { $('reference').removeAttribute('src'); $('reference').alt = 'Original image could not be loaded'; showMessage('The original image could not be loaded. Refresh and create the room again.'); };
 $('copy-room').onclick = async () => { try { await navigator.clipboard.writeText(game.code); $('copy-room').textContent = 'Copied!'; setTimeout(() => $('copy-room').textContent = 'Copy code', 1400); } catch { showMessage('Copy was not available. Room code: ' + game.code); } };
 function checkResumeBanner() {
@@ -241,6 +390,7 @@ function checkResumeBanner() {
   }
 }
 function leaveHome() {
+  stopAutoSolve();
   events && events.close();
   game = player = null;
   sessionStorage.removeItem('puzzleRoom');
