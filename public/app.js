@@ -133,7 +133,7 @@ async function joinRoom(code, name, resume = false) {
         checkResumeBanner();
         return;
       }
-      game = data; selected = null; render();
+      game = { image: game.image, ...data }; selected = null; render();
     };
     render();
   } catch (error) {

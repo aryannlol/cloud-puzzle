@@ -119,11 +119,13 @@ setInterval(() => {
   }
 }, 15000).unref();
 function closePersistence() { db.close(); }
-function publicGame(game) {
-  const tileById = new Map(game.tiles.map(t => [t.id, t]));
-  return { code: game.code, image: game.image, size: game.size, playerCount: game.playerCount, board: game.board, tiles: game.tiles, players: game.players.map(p => ({ id: p.id, name: p.name, owner: p.owner, total: game.tiles.filter(t => t.owner === p.owner).length, correct: progress(game.board, game.tiles, p.owner, game.size) })), done: complete(game) };
+function publicGame(game, { includeImage = true } = {}) {
+  const base = { code: game.code, size: game.size, playerCount: game.playerCount, board: game.board, tiles: game.tiles, players: game.players.map(p => ({ id: p.id, name: p.name, owner: p.owner, total: game.tiles.filter(t => t.owner === p.owner).length, correct: progress(game.board, game.tiles, p.owner, game.size) })), done: complete(game) };
+  if (includeImage) base.image = game.image;
+  return base;
 }
-function broadcast(game) { const message = 'data: ' + JSON.stringify(publicGame(game)) + '\n\n'; (clients.get(game.code) || []).forEach(res => res.write(message)); }
+// SSE broadcasts omit the image (it never changes and can be 1–3 MB per message).
+function broadcast(game) { const message = 'data: ' + JSON.stringify(publicGame(game, { includeImage: false })) + '\n\n'; (clients.get(game.code) || []).forEach(res => res.write(message)); }
 function body(req) { return new Promise((resolve, reject) => { let data = ''; req.on('data', chunk => { data += chunk; if (data.length > 16 * 1024 * 1024) { req.destroy(); reject(Error('Request too large.')); } }); req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch (e) { reject(e); } }); }); }
 function sendFile(res, file) { const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : 'text/css'; res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }); fs.createReadStream(file).pipe(res); }
 loadGames();
