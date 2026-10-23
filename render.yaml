@@ -13,6 +13,8 @@ services:
         value: production
       - key: CLOUD_PUZZLE_DB
         value: /app/data/cloud-puzzle.sqlite
+      - key: ENABLE_SOLVE
+        value: "1"
     disk:
       name: cloud-puzzle-data
       mountPath: /app/data
