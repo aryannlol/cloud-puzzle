@@ -310,19 +310,18 @@ body.in-game main {
   cursor: default;
 }
 
-/* Right Utility Sidebar */
+/* Right Utility Sidebar — borderless, minimal */
 .utility-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: 190px;
+  gap: 10px;
+  width: 180px;
 }
 
 .thumb-card, .players-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
+  background: transparent;
+  border: none;
+  padding: 6px 0;
 }
 
 .thumb-header, .players-panel-header {
@@ -378,14 +377,8 @@ body.in-game main {
 }
 
 /* Compact Players List */
-.compact-players-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .player {
-  padding: 6px 0;
+  padding: 5px 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -393,6 +386,22 @@ body.in-game main {
   border-bottom: 0;
   padding-bottom: 0;
 }
+
+/* Player colors — 4-color wheel */
+.player-0 .player-name { color: var(--blue); }
+.player-1 .player-name { color: var(--orange); }
+.player-2 .player-name { color: #10b981; }
+.player-3 .player-name { color: #a855f7; }
+
+.player-dot.player-0 { background: var(--blue); }
+.player-dot.player-1 { background: var(--orange); }
+.player-dot.player-2 { background: #10b981; }
+.player-dot.player-3 { background: #a855f7; }
+
+.progress-fill { background: var(--blue); }
+.player-1 .progress-fill { background: var(--orange); }
+.player-2 .progress-fill { background: #10b981; }
+.player-3 .progress-fill { background: #a855f7; }
 
 .player-top {
   display: flex;

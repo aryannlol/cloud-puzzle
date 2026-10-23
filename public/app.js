@@ -61,16 +61,15 @@ function applyServerState(data) {
 }
 function layoutBoard() {
   if (!game || !player || !game.size) return;
-  const region = regionBounds(player.owner), columns = region.end - region.start, ref = $('reference');
-  const imageAspect = ref.naturalWidth > 0 && ref.naturalHeight > 0 ? ref.naturalWidth / ref.naturalHeight : 1;
   const mobile = window.innerWidth <= 768, boardTop = $('board').getBoundingClientRect().top || 75;
-  const availableHeight = mobile ? Number.POSITIVE_INFINITY : Math.max(160, window.innerHeight - boardTop - 24);
-  const availableWidth = Math.max(160, $('board').parentElement.clientWidth - 4);
-  const cellWidth = Math.max(16, Math.floor(Math.min(availableWidth / columns, availableHeight * imageAspect / game.size)));
-  $('board').style.setProperty('--region-columns', columns);
+  const availableHeight = mobile ? Number.POSITIVE_INFINITY : Math.max(120, window.innerHeight - boardTop - 24);
+  const availableWidth = Math.max(120, $('board').parentElement.clientWidth - 4);
+  // Full NxN square board: cells are always square, sized to fit both axes
+  const cellSize = Math.max(12, Math.floor(Math.min(availableWidth / game.size, availableHeight / game.size)));
+  $('board').style.setProperty('--region-columns', game.size);
   $('board').style.setProperty('--grid-size', game.size);
-  $('board').style.setProperty('--cell-width', cellWidth + 'px');
-  $('board').style.setProperty('--cell-height', Math.floor(cellWidth / imageAspect) + 'px');
+  $('board').style.setProperty('--cell-width', cellSize + 'px');
+  $('board').style.setProperty('--cell-height', cellSize + 'px');
 }
 function findHint() { // optimal move: always put a tile where it belongs; prefer swaps that fix two tiles at once
   const region = regionBounds(player.owner), want = p => Math.floor(p / game.size) + '-' + p % game.size;
@@ -94,7 +93,7 @@ function doSwap(a, b) {
 }
 function onBoardClick(event) {
   const cell = event.target.closest('.cell'); if (!cell || preview || !game || game.done) return;
-  const position = Number(cell.dataset.pos); hint = null;
+  const position = Number(cell.dataset.pos); if (!inMyRegion(position)) return; hint = null;
   if (selected === null) { selected = position; render(); }
   else if (selected === position) { selected = null; render(); }
   else doSwap(selected, position);
@@ -114,13 +113,20 @@ function render() {
   layoutBoard();
   const frag = document.createDocumentFragment(), bg = 'background-image:url(' + game.image + ');background-size:' + game.size * 100 + '% ' + game.size * 100 + '%;';
   const last = Math.max(1, game.size - 1);
-  for (let row = 0; row < game.size; row++) for (let col = region.start; col < region.end; col++) {
-    const position = row * game.size + col, tile = tiles.get(preview ? correctBoard[position] : game.board[position]);
+  // Build column-to-owner map from tiles so we can colour-code every column
+  const colOwner = new Array(game.size).fill(0);
+  for (const t of game.tiles) colOwner[t.col] = t.owner;
+  for (let row = 0; row < game.size; row++) for (let col = 0; col < game.size; col++) {
+    const position = row * game.size + col, cellOwner = colOwner[col], isOwn = cellOwner === player.owner;
+    const tile = tiles.get(preview ? correctBoard[position] : game.board[position]);
     if (!tile) return showMessage('A puzzle tile is missing. Refresh and create a new room.');
     const cell = document.createElement('button'); cell.type = 'button'; cell.dataset.pos = position;
-    cell.className = 'cell region-' + player.owner + (selected === position ? ' selected' : '') + (hint && (hint[0] === position || hint[1] === position) ? ' hint' : '') + (preview ? ' preview-cell' : '');
+    const isSelected = isOwn && selected === position;
+    const isHint = isOwn && hint && (hint[0] === position || hint[1] === position);
+    cell.className = 'cell region-' + cellOwner + (!isOwn ? ' other-region' : '') + (isSelected ? ' selected' : '') + (isHint ? ' hint' : '') + (preview && isOwn ? ' preview-cell' : '');
     cell.style.cssText = bg + 'background-position:' + tile.col / last * 100 + '% ' + tile.row / last * 100 + '%';
-    cell.setAttribute('aria-label', 'Tile originally at row ' + tile.row + ', column ' + tile.col); cell.disabled = preview;
+    cell.setAttribute('aria-label', 'Tile originally at row ' + tile.row + ', column ' + tile.col);
+    cell.disabled = !isOwn || preview;
     if (debug) { const coords = document.createElement('span'); coords.className = 'coords'; coords.textContent = tile.row + ',' + tile.col; cell.append(coords); }
     frag.append(cell);
   }

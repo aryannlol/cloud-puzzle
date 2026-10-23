@@ -78,9 +78,15 @@ body:has(#completion:not([hidden])) .completion {
   z-index: 5;
 }
 
-/* Player region borders */
+/* Player region borders — colour-codes each player's columns on the full board */
 .region-0 { border-color: var(--blue); }
 .region-1 { border-color: var(--orange); }
+.region-2 { border-color: #10b981; }
+.region-3 { border-color: #a855f7; }
+
+/* Non-interactive columns: slightly dimmed but still visible */
+.cell.other-region { opacity: 0.5; cursor: default; }
+.cell.other-region:hover { filter: none !important; }
 
 .coords {
   position: absolute;
